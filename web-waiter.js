@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Web Waiter - Website Info
 // @namespace
-// @version      0.7
-// @description  A stupid web inspector that extracts metadata, favicons, theme colors, and tech stack information. Perfect for developers and analysts to quickly analyze websites.
+// @version      0.8
+// @description  A stupid web inspector that extracts metadata, favicons, theme colors, and social images. Perfect for developers and analysts to quickly analyze websites.
 // @author       Legacy Wolf
 // @match        *://*/*
 // @grant        GM_setClipboard
@@ -82,8 +82,33 @@
 
     class MetaExtractor {
         static getMetaContent(name, property) {
-            const meta = document.querySelector(`meta[name="${name}"], meta[property="${property}"]`);
+            const meta = document.querySelector(`meta[name="${name}"], meta[property="${property || name}"]`);
             return meta?.content;
+        }
+
+        static getSocialImages() {
+            const socialImages = {
+                'Open Graph': this.getMetaContent('og:image', 'og:image'),
+                'Twitter Card': this.getMetaContent('twitter:image', 'twitter:image'),
+                'Schema.org': this.getMetaContent('image', 'image'),
+                'Microsoft Tile': this.getMetaContent('msapplication-TileImage'),
+                'Apple Touch': document.querySelector('link[rel="apple-touch-icon"]')?.href,
+                'Article Image': this.getMetaContent('article:image', 'article:image')
+            };
+
+            return Object.fromEntries(
+                Object.entries(socialImages)
+                    .filter(([_, value]) => value != null && value !== '')
+                    .map(([key, value]) => [key, this.normalizeUrl(value)])
+            );
+        }
+
+        static normalizeUrl(url) {
+            if (!url) return null;
+            if (url.startsWith('//')) return `https:${url}`;
+            if (url.startsWith('/')) return `${window.location.origin}${url}`;
+            if (!url.startsWith('http')) return `${window.location.origin}/${url}`;
+            return url;
         }
 
         static getBasicInfo() {
@@ -93,7 +118,6 @@
                 description: this.getMetaContent('description'),
                 keywords: this.getMetaContent('keywords'),
                 robots: this.getMetaContent('robots'),
-                // canonical: document.querySelector('link[rel="canonical"]')?.href,
                 charset: document.charset || document.characterSet,
                 generator: this.getMetaContent('generator'),
                 author: this.getMetaContent('author'),
@@ -160,127 +184,44 @@
                 rssFeeds: Array.from(document.querySelectorAll('link[type="application/rss+xml"]'))
                     .map(link => link.href)
                     .filter(Boolean),
-                sitemaps: [
-                    ...Array.from(document.querySelectorAll('link[rel="sitemap"]'))
-                        .map(link => link.href)
-                        .filter(Boolean),
-                    ...['sitemap.xml', 'sitemap_index.xml', 'sitemap/', 'sitemap.html']
-                        .map(path => `${window.location.origin}/${path}`)
-                ],
-                techStack: [
-                    // 前端框架和库
-                    ((window.jQuery && typeof jQuery.fn === 'object') ||
-                        document.querySelector('script[src*="jquery"], script[src*="jquery.min.js"]')) && 'jQuery',
-
-                    ((window.React && typeof React.createElement === 'function') ||
-                        document.querySelector('script[src*="react"], script[src*="react.production.min.js"]')) && 'React',
-
-                    ((window.Vue && typeof Vue.version === 'string') ||
-                        document.querySelector('script[src*="vue"], script[src*="vue.global.js"], script[src*="vue.runtime.js"]')) && 'Vue',
-
-                    (window.angular && typeof angular.module === 'function') && 'Angular',
-
-                    (window.Ember && typeof Ember.VERSION === 'string') && 'Ember.js',
-
-                    (window.Backbone && typeof Backbone.Model === 'function') && 'Backbone.js',
-
-                    document.querySelector('[ng-version]') && 'Angular',
-
-                    document.querySelector('[sveltekit\\:data]') && 'SvelteKit',
-
-                    document.querySelector('[data-reactroot], [data-reactid]') && 'React (Server-Side Rendered)',
-
-                    document.querySelector('script[src*="polymer"]') && 'Polymer',
-
-                    // CMS 和博客平台
-                    (document.querySelector('script[src*="wordpress"]') ||
-                        document.querySelector('script[src*="wp-content"], link[href*="wp-content"]') ||
-                        document.querySelector('meta[name="generator"][content*="WordPress"]')) && 'WordPress',
-
-                    document.querySelector('meta[content*="Drupal"]') && 'Drupal',
-                    document.querySelector('script[src*="wix"]') && 'Wix',
-                    document.querySelector('meta[content*="Ghost"]') && 'Ghost',
-                    document.querySelector('meta[name="generator"][content*="Blogger"]') && 'Blogger',
-                    document.querySelector('script[src*="zendesk"]') && 'Zendesk',
-                    document.querySelector('script[src*="sitepad"]') && 'SitePad',
-
-                    // 电商平台
-                    document.querySelector('script[src*="cdn.shopify.com"]') && 'Shopify',
-                    document.querySelector('meta[name="generator"][content*="Magento"]') && 'Magento',
-                    (document.querySelector('script[src*="woocommerce"]') ||
-                        document.querySelector('link[href*="woocommerce"], script[src*="wc-"], link[href*="wc-"]')) && 'WooCommerce',
-                    document.querySelector('meta[name="generator"][content*="PrestaShop"]') && 'PrestaShop',
-                    document.querySelector('meta[name="application-name"][content*="Shopware"]') && 'Shopware',
-                    document.querySelector('meta[name="generator"][content*="OpenCart"]') && 'OpenCart',
-                    document.querySelector('script[src*="bigcommerce"]') && 'BigCommerce',
-
-                    // 支付工具
-                    document.querySelector('script[src*="js.stripe.com"]') && 'Stripe',
-                    document.querySelector('script[src*="klarna.com"]') && 'Klarna',
-
-                    // 文档生成工具
-                    document.querySelector('div[class*="swagger-ui"]') && 'Swagger UI',
-                    document.querySelector('meta[content*="GitBook"]') && 'GitBook',
-                    document.querySelector('meta[content*="Docusaurus"]') && 'Docusaurus',
-                    document.querySelector('meta[name="generator"][content*="Sphinx"]') && 'Sphinx',
-                    document.querySelector('script[src*="betterdocs"]') && 'BetterDocs',
-                    document.querySelector('script[src*="mkdocs"]') && 'MkDocs',
-
-                    // CSS 框架和 UI 工具
-                    document.querySelector('link[href*="bootstrap"], link[href*="bootstrap.min.css"]') && 'Bootstrap',
-                    document.querySelector('link[href*="animate.css"]') && 'Animate.css',
-                    document.querySelector('link[href*="tailwind"], link[href*="tailwind.min.css"]') && 'Tailwind CSS',
-                    document.querySelector('link[href*="foundation"]') && 'ZURB Foundation',
-                    document.querySelector('link[href*="civictheme"]') && 'CivicTheme',
-                    document.querySelector('.MuiButton-root') && 'MUI',
-                    document.querySelector('[class*="uikit"]') && 'UIKit',
-                    document.querySelector('[class*="el-"]') && 'Element UI',
-                    document.querySelector('link[href*="material.min.css"]') && 'Material Design Lite',
-                    document.querySelector('[class*="ant-"]') && 'Ant Design',
-
-                    // 静态网站生成器
-                    document.querySelector('script[src*="gatsby"], script[src*="gatsby.min.js"]') && 'Gatsby',
-                    (document.querySelector('script[src*="next"], script[src*="next.min.js"]') || window.__NEXT_DATA__) && 'Next.js',
-                    document.querySelector('script[src*="nuxt"], script[src*="nuxt.min.js"]') && 'Nuxt.js',
-                    document.querySelector('script[src*="astro"], script[src*="astro.min.js"]') && 'Astro',
-                    document.querySelector('script[src*="hugo"], script[src*="hugo.min.js"]') && 'Hugo',
-                    document.querySelector('script[src*="adobe"]') && 'Adobe Muse',
-                    document.querySelector('script[src*="vuepress"]') && 'VuePress',
-                    document.querySelector('script[src*="vitepress"]') && 'VitePress',
-
-                    // 测试框架
-                    window.jasmine && typeof jasmine === 'object' && 'Jasmine',
-                    window.mocha && typeof mocha.describe === 'function' && 'Mocha',
-                    window.chai && typeof chai.assert === 'function' && 'Chai',
-                    window.QUnit && typeof QUnit.test === 'function' && 'QUnit',
-
-                    // 图表库
-                    (window.Chart && typeof Chart === 'function') && 'Chart.js',
-                    (window.Highcharts && typeof Highcharts.chart === 'function') && 'Highcharts',
-                    (window.am4core && typeof am4core.create === 'function') && 'amCharts',
-                    (typeof window.Plotly === 'object' && typeof Plotly.newPlot === 'function') && 'Plotly.js',
-
-                    // 分析和跟踪工具
-                    (window.ga && typeof ga === 'function') && 'Google Analytics',
-                    (window.fbq && typeof fbq === 'function') && 'Facebook Pixel',
-                    document.querySelector('script[src*="hotjar"]') && 'Hotjar',
-                    document.querySelector('script[src*="mixpanel"]') && 'Mixpanel',
-                    document.querySelector('script[src*="segment"]') && 'Segment',
-
-                    // 其他工具
-                    (window.firebase && typeof firebase === 'object') && 'Firebase',
-                    ((window.gsap && typeof gsap.to === 'function') ||
-                        (window._gsap && typeof _gsap.to === 'function')) && 'GSAP',
-                    ((document.querySelector('script[src*="three"], script[src*="three.min.js"]') ||
-                        (window.THREE && typeof THREE === 'object'))) && 'Three.js'
-                ].filter(Boolean),
+                sitemaps: Array.from(document.querySelectorAll('link[rel="sitemap"]'))
+                    .map(link => link.href)
+                    .filter(Boolean),
                 hasGoogleAnalytics: document.querySelector('script[src*="google-analytics.com"], script[src*="gtag"]') ? '是' : null,
                 securityHeaders: { https: window.location.protocol === 'https:' },
-                themeColors: this.extractThemeColors()
+                themeColors: this.extractThemeColors(),
+                socialImages: this.getSocialImages()
             };
+        
+            // Only attempt basic sitemap URL checks if no sitemap links were found
+            if (info.sitemaps.length === 0) {
+                const commonSitemapPaths = ['sitemap.xml', 'sitemap_index.xml', 'sitemap/'];
+                const baseUrl = window.location.origin;
+                
+                // Simple HEAD request to check if sitemap exists
+                for (const path of commonSitemapPaths) {
+                    const url = `${baseUrl}/${path}`;
+                    try {
+                        const xhr = new XMLHttpRequest();
+                        xhr.open('HEAD', url, false);  // Synchronous request
+                        xhr.send();
+                        if (xhr.status === 200) {
+                            info.sitemaps.push(url);
+                            break;  // Stop checking after finding first valid sitemap
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+            }
+        
+            // If no sitemaps found, delete the property
+            if (info.sitemaps.length === 0) {
+                delete info.sitemaps;
+            }
+        
             return info;
         }
-
     }
 
     class SiteInfoUI {
@@ -314,7 +255,6 @@
         }
 
         static createSection(title, items) {
-            // 首先过滤掉所有空值、空数组和未定义的项
             const filteredItems = Object.fromEntries(
                 Object.entries(items).filter(([_, value]) => {
                     if (Array.isArray(value)) {
@@ -416,8 +356,50 @@
             }
         }
 
+        static addSocialImages(designSection, socialImages) {
+            if (!Object.keys(socialImages).length) return;
+
+            const socialImagesDiv = document.createElement('div');
+            socialImagesDiv.style.cssText = 'margin-top: 20px;';
+            // socialImagesDiv.innerHTML = '<h5 style="margin: 0 0 10px 0; color: #666;">社交分享图片</h5>';
+
+            const imagesGrid = document.createElement('div');
+            imagesGrid.style.cssText = `
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 15px;
+            `;
+
+            Object.entries(socialImages).forEach(async ([type, url]) => {
+                const dimensions = await ImageHandler.getDimensions(url);
+                if (dimensions.size === '获取失败') return;
+
+                const imageCard = document.createElement('div');
+                imageCard.style.cssText = `
+                    background: #f8f9fa;
+                    padding: 10px;
+                    border-radius: 8px;
+                    text-align: center;
+                    transition: transform 0.2s;
+                    cursor: pointer;
+                `;
+                imageCard.onmouseover = () => imageCard.style.transform = 'scale(1.05)';
+                imageCard.onmouseout = () => imageCard.style.transform = 'scale(1)';
+                imageCard.onclick = () => ImageHandler.download(url, `social-${type.toLowerCase()}.jpg`);
+
+                imageCard.innerHTML = `
+                    <img src="${url}" style="width: 100%; height: 100px; object-fit: contain; margin-bottom: 8px;">
+                    <div style="font-size: 11px; color: #666; margin-bottom: 4px;">${type}</div>
+                    <div style="font-size: 11px; color: #888;">${dimensions.size}</div>
+                `;
+                imagesGrid.appendChild(imageCard);
+            });
+
+            socialImagesDiv.appendChild(imagesGrid);
+            designSection.appendChild(socialImagesDiv);
+        }
+
         static showPreview(info) {
-            // Create overlay
             const overlay = document.createElement('div');
             overlay.style.cssText = `
                 position: fixed;
@@ -451,10 +433,8 @@
                 document.body.removeChild(preview);
             };
 
-            // Add click event to overlay
             overlay.addEventListener('click', closePanel);
 
-            // Prevent clicks inside the preview from closing
             preview.addEventListener('click', (e) => {
                 e.stopPropagation();
             });
@@ -467,7 +447,6 @@
                 </div>
             `;
 
-            // Add sections
             [
                 ['1️⃣ 基础信息', {
                     '网址': info.meta.url,
@@ -475,42 +454,34 @@
                     ...(info.meta.description ? { '描述': info.meta.description } : {}),
                     ...(info.meta.keywords ? { '关键词': info.meta.keywords } : {}),
                     ...(info.meta.robots ? { 'Robots': info.meta.robots } : {}),
-                    // ...(info.meta.canonical ? { '规范链接': info.meta.canonical } : {}),
                     ...(info.meta.charset ? { '字符编码': info.meta.charset } : {}),
                     ...(info.meta.language ? { '语言': info.meta.language } : {})
                 }],
-                ['2️⃣ 内容信息', {
+                ['2️⃣ 扩展信息', {
                     ...(info.valuable.rssFeeds?.length ? { 'RSS订阅': info.valuable.rssFeeds } : {}),
                     ...(info.valuable.sitemaps?.length ? { '站点地图': info.valuable.sitemaps } : {}),
                     ...(info.valuable.hasGoogleAnalytics ? { 'Google Analytics': info.valuable.hasGoogleAnalytics } : {}),
                     ...(info.meta.author ? { '作者': info.meta.author } : {}),
-                    ...(info.meta.copyright ? { '版权': info.meta.copyright } : {})
-
-                }],
-                ['3️⃣ 开发信息', {
+                    ...(info.meta.copyright ? { '版权': info.meta.copyright } : {}),
                     ...(info.meta.generator ? { '生成器': info.meta.generator } : {}),
-                    ...(info.valuable.techStack?.length ? { '技术栈': info.valuable.techStack } : {}),
+                    // ...(info.valuable.techStack?.length ? { '技术栈': info.valuable.techStack } : {}),
                     ...(info.valuable.securityHeaders?.https ? { 'HTTPS': info.valuable.securityHeaders.https } : {})
-                }]
+                }],
             ].forEach(([title, items]) => {
                 const section = this.createSection(title, items);
                 if (section) content.appendChild(section);
             });
 
-            // Add design section
             const designSection = document.createElement('div');
-            designSection.innerHTML = '<h4 style="margin: 0 0 10px 0; color: #666;">4️⃣ 设计信息</h4>';
+            designSection.innerHTML = '<h4 style="margin: 0 0 10px 0; color: #666;">3️⃣ 设计信息</h4>';
 
-            // Add theme colors
             if (info.valuable.themeColors?.length) {
                 const themeColorsDiv = document.createElement('div');
                 this.appendThemeColors(themeColorsDiv, info.valuable.themeColors);
                 designSection.appendChild(themeColorsDiv);
             }
 
-            // Add icons grid
             if (info.icons?.length) {
-                // Sort icons by dimensions (largest first)
                 const sortedIcons = [...info.icons].sort((a, b) => {
                     const aSize = a.dimensions.width * a.dimensions.height;
                     const bSize = b.dimensions.width * b.dimensions.height;
@@ -549,9 +520,13 @@
                 designSection.appendChild(iconsGrid);
             }
 
+            // Add social images
+            if (Object.keys(info.valuable.socialImages || {}).length) {
+                this.addSocialImages(designSection, info.valuable.socialImages);
+            }
+
             content.appendChild(designSection);
 
-            // Add close button
             const closeButton = UI.createButton('关闭', closePanel);
             closeButton.style.cssText += `
                 align-self: flex-end;
@@ -564,17 +539,15 @@
 
             preview.appendChild(content);
 
-            // Add both overlay and preview to the body
             document.body.appendChild(overlay);
             document.body.appendChild(preview);
         }
     }
 
-    // Initialize the floating button
     const floatingButton = UI.createButton('🛎️', () => SiteInfoUI.init());
     floatingButton.style.cssText = `
         position: fixed;
-        top: 50px;
+        top: 100px;
         right: 20px;
         z-index: 10000;
         padding: 10px 15px;
